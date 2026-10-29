@@ -65,7 +65,7 @@ def parse_questionnaire(text: str):
         if qprefix:
             is_question = True
             label = qprefix.group(1).strip()
-        elif numbered and ("?" in line or current is None):
+        elif numbered and ("?" in line or current is None or QUESTION_CUE_RE.match(numbered.group(2))):
             is_question = True
             label = numbered.group(2).strip()
         elif "?" in line and not (current is not None and OPTION_RE.match(line)):
