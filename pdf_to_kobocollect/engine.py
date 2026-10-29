@@ -151,9 +151,9 @@ def to_xlsform(items, out: Path, title="Questionnaire converti", form_id="questi
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
-        pd.DataFrame(survey).to_excel(writer, "survey", index=False)
-        pd.DataFrame(choices, columns=["list_name", "name", "label"]).to_excel(writer, "choices", index=False)
-        pd.DataFrame(settings).to_excel(writer, "settings", index=False)
+        pd.DataFrame(survey).to_excel(writer, sheet_name="survey", index=False)
+        pd.DataFrame(choices, columns=["list_name", "name", "label"]).to_excel(writer, sheet_name="choices", index=False)
+        pd.DataFrame(settings).to_excel(writer, sheet_name="settings", index=False)
     return {"questions": len(survey), "choices": len(choices), "output": str(out)}
 
 
