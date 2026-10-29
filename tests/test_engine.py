@@ -123,3 +123,20 @@ def test_xlsform_validator_detects_missing_choice_list(tmp_path: Path):
     report = validate_xlsform(output)
     assert report["valid"] is False
     assert any("missing_list" in error for error in report["errors"])
+
+
+def test_naming_standard_transliterates_accents_and_limits_length():
+    from pdf_to_kobocollect.engine import make_name
+    assert make_name("État civil", 1) == "etat_civil"
+    assert make_name("123 âge", 2).startswith("q_")
+    assert len(make_name("Nombre de chameaux possédés actuellement dans le ménage", 3)) <= 32
+
+
+def test_xlsform_includes_dictionary_traceability_and_qa_sheets(tmp_path: Path):
+    output = tmp_path / "documented.xlsx"
+    to_xlsform([{"label": "État civil ?", "choices": ["Marié", "Célibataire"]}], output)
+    workbook = pd.ExcelFile(output)
+    assert {"survey", "choices", "settings", "variable_dictionary", "source_traceability", "decisions", "logic_register", "qa_report", "pilot_tests"}.issubset(workbook.sheet_names)
+    dictionary = pd.read_excel(output, sheet_name="variable_dictionary")
+    assert dictionary.loc[0, "variable_name"] == "etat_civil"
+    assert dictionary.loc[0, "validation_status"] == "À VALIDER"
