@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf-to-kobocollect-engine"
+version = "0.1.0"
+description = "A reusable Python engine for drafting KoboToolbox XLSForms from questionnaire documents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pandas>=2.0", "openpyxl>=3.1", "PyMuPDF>=1.23", "python-docx>=1.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["pdf_to_kobocollect*"]
