@@ -16,7 +16,7 @@ QUESTION_CUE_RE = re.compile(
     r"^(?:quel(?:le|s|les)?|combien|où|ou|quand|comment|pourquoi|qui|lequel|"
     r"indiquez|précisez|precisez|décrivez|decrivez|veuillez|avez-vous|"
     r"êtes-vous|etes-vous|est-ce|dans quelle|dans quel|what|which|where|"
-    r"when|how|why|who|please|do you|are you)\\b",
+    r"when|how|why|who|please|do you|are you)\b",
     re.IGNORECASE,
 )
 
