@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from .engine import extract_text, parse_questionnaire, to_xlsform, validate_items
+from .engine import extract_text, parse_questionnaire, to_xlsform, validate_items, validate_xlsform
 
 
 def main(argv=None) -> int:
@@ -30,8 +30,13 @@ def main(argv=None) -> int:
             return 2
 
         result = to_xlsform(items, args.output, title=args.title, form_id=args.form_id)
-        print(json.dumps({"result": result, "validation": report}, ensure_ascii=False, indent=2))
-        if report["warnings"]:
+        workbook_report = validate_xlsform(args.output)
+        output = {"result": result, "questionnaire_validation": report, "xlsform_validation": workbook_report}
+        print(json.dumps(output, ensure_ascii=False, indent=2))
+        if not workbook_report["valid"]:
+            print("\nErreur : le XLSForm généré présente des problèmes structurels.", file=sys.stderr)
+            return 3
+        if report["warnings"] or workbook_report["warnings"]:
             print("\nAttention : vérifiez manuellement les questions et les choix avant déploiement.", file=sys.stderr)
         return 0
     except (OSError, ValueError) as exc:
