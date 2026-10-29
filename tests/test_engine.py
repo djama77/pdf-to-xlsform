@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 from docx import Document
 
-from pdf_to_kobocollect import extract_text, parse_questionnaire, to_xlsform, validate_items
+from pdf_to_kobocollect import extract_text, parse_questionnaire, to_xlsform, validate_items, validate_xlsform
 
 
 def test_numbered_answer_options_stay_with_their_question(tmp_path: Path):
@@ -96,3 +96,30 @@ def test_extract_text_from_txt_and_docx(tmp_path: Path):
     extracted = extract_text(docx_path)
     assert "Quel est votre pays ?" in extracted
     assert "Oui | Non" in extracted
+
+
+
+def test_generated_xlsform_passes_structural_validation(tmp_path: Path):
+    items = parse_questionnaire("Q1. Quel est votre pays ?\\n1. Djibouti\\n2. France")
+    output = tmp_path / "valid.xlsx"
+    to_xlsform(items, output)
+    report = validate_xlsform(output)
+    assert report["valid"] is True
+    assert report["errors"] == []
+
+
+def test_xlsform_validator_detects_missing_choice_list(tmp_path: Path):
+    output = tmp_path / "invalid.xlsx"
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame([{"type": "select_one missing_list", "name": "country", "label": "Pays"}]).to_excel(
+            writer, sheet_name="survey", index=False
+        )
+        pd.DataFrame([{"list_name": "other_list", "name": "yes", "label": "Oui"}]).to_excel(
+            writer, sheet_name="choices", index=False
+        )
+        pd.DataFrame([{"form_title": "Test", "form_id": "test"}]).to_excel(
+            writer, sheet_name="settings", index=False
+        )
+    report = validate_xlsform(output)
+    assert report["valid"] is False
+    assert any("missing_list" in error for error in report["errors"])
