@@ -18,7 +18,7 @@ Le dépôt contient un premier moteur autonome extrait d'un projet existant, ave
 - Les PDF numérisés sans couche texte sont détectés, mais l'OCR local n'est pas encore intégré.
 - La logique conditionnelle, les groupes/répétitions, les matrices, les calculs et les contraintes ne sont pas reconstruits automatiquement.
 - La détection des questions dépend de la mise en page et de la formulation ; une revue humaine est indispensable.
-- Avant déploiement, validez le fichier produit avec les outils de validation XLSForm/KoboToolbox.
+- Le livrable de ce projet est le classeur XLSForm `.xlsx` et son rapport QA. L'importation dans KoboToolbox, ODK ou SurveyCTO est effectuée séparément par l'utilisateur et n'est pas automatisée par ce programme.
 
 ## Installation
 
@@ -90,3 +90,31 @@ Le moteur a été isolé à partir du dépôt [StatisticiEnStad-Data-Analytics](
 ## Licence
 
 Consultez le fichier `LICENSE` pour les conditions de licence du dépôt.
+
+
+## Validation du fichier généré
+
+Après la conversion, le programme contrôle automatiquement la structure du classeur XLSForm :
+- présence des feuilles `survey`, `choices` et `settings` ;
+- présence des colonnes obligatoires ;
+- champs vides et noms de variables de question en double ;
+- doublons de modalités au sein d'une même liste ;
+- références `select_one` / `select_multiple` vers des listes de choix inexistantes ;
+- présence du titre et de l'identifiant du formulaire.
+
+Cette vérification structurelle porte sur le classeur généré et ne constitue pas une garantie de validation complète de toutes les expressions XLSForm. La logique de saut, les contraintes et la fidélité au document source doivent être vérifiées par l'utilisateur avant utilisation. L'importation dans KoboToolbox, ODK ou SurveyCTO est hors du périmètre du programme et reste à la charge de l'utilisateur.
+
+
+## Référentiel INSTAD XLSForm SUPERSKILL V3 — nomenclature et traçabilité
+
+Le générateur applique une proposition de nomenclature fondée sur les principes INSTAD : noms courts, descriptifs, uniques, stables, traçables et en `lower_snake_case`, sans accents ni espaces, avec un objectif de 32 caractères maximum pour les variables. Les noms réservés/problématiques sont évités autant que possible. Les noms générés restent des **propositions à valider**, jamais une validation métier automatique.
+
+- Le libellé original est conservé dans `survey.label` et dans le dictionnaire.
+- Les noms proposés sont normalisés sans accents et désambiguïsés avec un suffixe, dans la limite de longueur.
+- Le classeur inclut `variable_dictionary`, `source_traceability`, `decisions`, `logic_register`, `qa_report` et `pilot_tests` en plus des feuilles XLSForm principales.
+- Les ambiguïtés, modalités non détectées, logique métier, page/section source et compatibilité plateforme doivent être vérifiées. Le moteur ne prétend pas reconstruire les sauts, contraintes ou calculs absents du texte extrait.
+- Une variable validée ne doit pas être renommée après déploiement sans décision documentée et gestion de version.
+
+Les statuts utilisés sont `PASS`, `À VALIDER`, `BLOQUÉ` et `NON TESTÉ`. Une sortie XLSX n'est pas une déclaration de préparation PROD : validation métier et revue des résultats QA restent nécessaires. L'importation sur une plateforme n'est ni automatisée ni exigée par le programme.
+
+Voir aussi [docs/INSTAD_NAMING_STANDARD.md](docs/INSTAD_NAMING_STANDARD.md).

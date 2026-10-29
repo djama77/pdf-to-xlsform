@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 from docx import Document
 
-from pdf_to_kobocollect import extract_text, parse_questionnaire, to_xlsform, validate_items
+from pdf_to_kobocollect import extract_text, parse_questionnaire, to_xlsform, validate_items, validate_xlsform
 
 
 def test_numbered_answer_options_stay_with_their_question(tmp_path: Path):
@@ -96,3 +96,47 @@ def test_extract_text_from_txt_and_docx(tmp_path: Path):
     extracted = extract_text(docx_path)
     assert "Quel est votre pays ?" in extracted
     assert "Oui | Non" in extracted
+
+
+
+def test_generated_xlsform_passes_structural_validation(tmp_path: Path):
+    items = parse_questionnaire("Q1. Quel est votre pays ?\\n1. Djibouti\\n2. France")
+    output = tmp_path / "valid.xlsx"
+    to_xlsform(items, output)
+    report = validate_xlsform(output)
+    assert report["valid"] is True
+    assert report["errors"] == []
+
+
+def test_xlsform_validator_detects_missing_choice_list(tmp_path: Path):
+    output = tmp_path / "invalid.xlsx"
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame([{"type": "select_one missing_list", "name": "country", "label": "Pays"}]).to_excel(
+            writer, sheet_name="survey", index=False
+        )
+        pd.DataFrame([{"list_name": "other_list", "name": "yes", "label": "Oui"}]).to_excel(
+            writer, sheet_name="choices", index=False
+        )
+        pd.DataFrame([{"form_title": "Test", "form_id": "test"}]).to_excel(
+            writer, sheet_name="settings", index=False
+        )
+    report = validate_xlsform(output)
+    assert report["valid"] is False
+    assert any("missing_list" in error for error in report["errors"])
+
+
+def test_naming_standard_transliterates_accents_and_limits_length():
+    from pdf_to_kobocollect.engine import make_name
+    assert make_name("État civil", 1) == "etat_civil"
+    assert make_name("123 âge", 2).startswith("q_")
+    assert len(make_name("Nombre de chameaux possédés actuellement dans le ménage", 3)) <= 32
+
+
+def test_xlsform_includes_dictionary_traceability_and_qa_sheets(tmp_path: Path):
+    output = tmp_path / "documented.xlsx"
+    to_xlsform([{"label": "État civil ?", "choices": ["Marié", "Célibataire"]}], output)
+    workbook = pd.ExcelFile(output)
+    assert {"survey", "choices", "settings", "variable_dictionary", "source_traceability", "decisions", "logic_register", "qa_report", "pilot_tests"}.issubset(workbook.sheet_names)
+    dictionary = pd.read_excel(output, sheet_name="variable_dictionary")
+    assert dictionary.loc[0, "variable_name"] == "etat_civil"
+    assert dictionary.loc[0, "validation_status"] == "À VALIDER"
