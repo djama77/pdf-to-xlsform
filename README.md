@@ -90,3 +90,16 @@ Le moteur a été isolé à partir du dépôt [StatisticiEnStad-Data-Analytics](
 ## Licence
 
 Consultez le fichier `LICENSE` pour les conditions de licence du dépôt.
+
+
+## Validation du fichier généré
+
+Après la conversion, le programme contrôle automatiquement la structure du classeur XLSForm :
+- présence des feuilles `survey`, `choices` et `settings` ;
+- présence des colonnes obligatoires ;
+- champs vides et noms de variables de question en double ;
+- doublons de modalités au sein d'une même liste ;
+- références `select_one` / `select_multiple` vers des listes de choix inexistantes ;
+- présence du titre et de l'identifiant du formulaire.
+
+Cette vérification structurelle ne remplace pas une validation complète par pyxform/KoboToolbox ni la relecture humaine. La logique de saut, les contraintes et la fidélité au document source doivent être vérifiées avant une collecte réelle.
