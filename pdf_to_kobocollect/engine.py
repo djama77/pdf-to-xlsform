@@ -12,6 +12,14 @@ QUESTION_PREFIX_RE = re.compile(
 )
 NUMBERED_RE = re.compile(r"^\s*(\d+)\s*[.)\-:]\s+(.+?)\s*$")
 OPTION_RE = re.compile(r"^\s*(?:[-•*]|[A-Za-z][.)]|\d+[.)])\s*(.+?)\s*$")
+QUESTION_CUE_RE = re.compile(
+    r"^(?:quel(?:le|s|les)?|combien|où|ou|quand|comment|pourquoi|qui|lequel|"
+    r"indiquez|précisez|precisez|décrivez|decrivez|veuillez|avez-vous|"
+    r"êtes-vous|etes-vous|est-ce|dans quelle|dans quel|what|which|where|"
+    r"when|how|why|who|please|do you|are you)\\b",
+    re.IGNORECASE,
+)
+
 
 
 def extract_text(path: Path) -> str:
