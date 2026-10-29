@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import unicodedata
 
 import pandas as pd
 import fitz
@@ -97,47 +98,62 @@ def parse_questionnaire(text: str):
     return items
 
 
-def make_name(label, idx):
-    base = re.sub(r"[^a-z0-9_]+", "_", label.lower()).strip("_")
-    base = re.sub(r"_+", "_", base)[:40]
-    if not base or not base[0].isalpha():
-        base = f"q{idx}_{base}"
-    return base
+RESERVED_NAMES = {"type", "label", "start", "today", "end", "deviceid", "subscriberid"}
+MAX_VARIABLE_LENGTH = 32
+
+
+def make_name(label, idx, max_length=MAX_VARIABLE_LENGTH):
+    """Create a stable, ASCII lower_snake_case name; this is a proposal, not business approval."""
+    text = unicodedata.normalize("NFKD", str(label))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    base = re.sub(r"[^A-Za-z0-9_]+", "_", text).lower()
+    base = re.sub(r"_+", "_", base).strip("_")
+    if not base:
+        base = f"question_{idx}"
+    if not base[0].isalpha():
+        base = f"q_{base}"
+    if base in RESERVED_NAMES:
+        base = f"{base}_field"
+    return base[:max_length].rstrip("_") or f"question_{idx}"[:max_length]
+
+
+def _unique_name(base, seen, max_length=MAX_VARIABLE_LENGTH):
+    """Return a unique name while keeping suffixes inside the configured length limit."""
+    candidate = base[:max_length]
+    suffix = 2
+    while candidate.casefold() in seen:
+        tail = f"_{suffix}"
+        candidate = f"{base[:max_length - len(tail)].rstrip('_')}{tail}"
+        suffix += 1
+    seen.add(candidate.casefold())
+    return candidate
 
 
 def to_xlsform(items, out: Path, title="Questionnaire converti", form_id="questionnaire_converti"):
-    survey = []
-    choices = []
-    seen = set()
+    survey, choices = [], []
+    seen_names, seen_lists = set(), set()
+    dictionary, traceability, decisions, logic = [], [], [], []
 
     for i, item in enumerate(items, 1):
         label = str(item.get("label", "")).strip()
         if not label:
+            decisions.append({"source_ref": f"Q{i}", "issue": "Libellé source vide", "decision_required": "Retrouver et vérifier la question dans le document original", "status": "BLOQUÉ"})
             continue
 
-        name = make_name(label, i)
-        original = name
-        suffix = 2
-        while name in seen:
-            name = f"{original}_{suffix}"
-            suffix += 1
-        seen.add(name)
-
+        proposed_name = make_name(label, i)
+        name = _unique_name(proposed_name, seen_names)
         options = [str(option).strip() for option in item.get("choices", []) if str(option).strip()]
         if options:
-            list_name = f"list_{name}"[:45]
+            list_base = make_name(f"list_{name}", i, max_length=45)
+            list_name = _unique_name(list_base, seen_lists, max_length=45)
             qtype = f"select_one {list_name}"
             option_names = set()
             for k, option_label in enumerate(options, 1):
-                option_name = make_name(option_label, k)[:40] or f"choice_{k}"
-                base_option_name = option_name
-                option_suffix = 2
-                while option_name in option_names:
-                    option_name = f"{base_option_name}_{option_suffix}"
-                    option_suffix += 1
-                option_names.add(option_name)
+                option_base = make_name(option_label, k)
+                option_name = _unique_name(option_base, option_names)
                 choices.append({"list_name": list_name, "name": option_name, "label": option_label})
         else:
+            list_name = ""
             qtype = "text"
 
         survey.append({
@@ -146,6 +162,19 @@ def to_xlsform(items, out: Path, title="Questionnaire converti", form_id="questi
             "constraint": "", "constraint_message": "", "calculation": "",
             "appearance": "", "choice_filter": "",
         })
+        dictionary.append({
+            "source_ref": f"Q{i}", "variable_name": name, "label_original": label,
+            "data_type": qtype, "choice_list": list_name,
+            "modalities_codes": "; ".join(f"{c['name']}={c['label']}" for c in choices if c["list_name"] == list_name) if list_name else "",
+            "display_condition": "Non extraite automatiquement", "unit": "À déterminer dans la source",
+            "definition": "À compléter après revue du questionnaire", "validation_status": "À VALIDER",
+        })
+        traceability.append({"source_ref": f"Q{i}", "source_location": "Position détectée dans l'ordre d'extraction; page/section non repérées", "source_label": label, "survey_row": len(survey) + 1, "variable_name": name, "status": "À VALIDER"})
+        if proposed_name != name:
+            decisions.append({"source_ref": f"Q{i}", "issue": f"Nom proposé normalisé ou désambiguïsé : {proposed_name} → {name}", "decision_required": "Confirmer le nom avant déploiement; documenter tout changement ultérieur", "status": "À VALIDER"})
+        if not options:
+            decisions.append({"source_ref": f"Q{i}", "issue": "Aucune modalité structurée détectée", "decision_required": "Confirmer si la réponse est libre ou si des modalités ont été manquées", "status": "À VALIDER"})
+        logic.append({"source_ref": f"Q{i}", "variable_name": name, "relevant": "", "required": "", "constraint": "", "calculation": "", "choice_filter": "", "status": "NON TESTÉ", "notes": "La logique métier ne doit pas être inventée par la conversion."})
 
     if not survey:
         raise ValueError("Aucune question exploitable détectée ; XLSForm non généré.")
@@ -156,13 +185,27 @@ def to_xlsform(items, out: Path, title="Questionnaire converti", form_id="questi
         "version": "1",
         "default_language": "French (fr)",
     }]
+    qa = [
+        {"control": "Feuilles XLSForm principales générées", "status": "PASS", "details": "survey, choices, settings générées"},
+        {"control": "Nommage lower_snake_case et limite 32 caractères", "status": "PASS" if all(len(row["name"]) <= MAX_VARIABLE_LENGTH and re.fullmatch(r"[a-z][a-z0-9_]*", row["name"]) for row in survey) else "BLOQUÉ", "details": "Contrôle automatique des noms de variables survey"},
+        {"control": "Fidélité complète au document source", "status": "NON TESTÉ", "details": "Comparaison humaine obligatoire; extraction heuristique"},
+        {"control": "Sauts, contraintes et calculs métier", "status": "NON TESTÉ", "details": "Ne sont pas reconstruits automatiquement"},
+        {"control": "Importation Kobo/ODK/SurveyCTO", "status": "NON TESTÉ", "details": "Aucun test d'importation effectué"},
+        {"control": "Validation métier et pilote", "status": "À VALIDER", "details": "Nécessaires avant toute déclaration PROD"},
+    ]
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         pd.DataFrame(survey).to_excel(writer, sheet_name="survey", index=False)
         pd.DataFrame(choices, columns=["list_name", "name", "label"]).to_excel(writer, sheet_name="choices", index=False)
         pd.DataFrame(settings).to_excel(writer, sheet_name="settings", index=False)
-    return {"questions": len(survey), "choices": len(choices), "output": str(out)}
+        pd.DataFrame(dictionary).to_excel(writer, sheet_name="variable_dictionary", index=False)
+        pd.DataFrame(traceability).to_excel(writer, sheet_name="source_traceability", index=False)
+        pd.DataFrame(decisions, columns=["source_ref", "issue", "decision_required", "status"]).to_excel(writer, sheet_name="decisions", index=False)
+        pd.DataFrame(logic).to_excel(writer, sheet_name="logic_register", index=False)
+        pd.DataFrame(qa).to_excel(writer, sheet_name="qa_report", index=False)
+        pd.DataFrame(columns=["test_id", "scenario", "expected_result", "observed_result", "status", "tester", "date", "notes"]).to_excel(writer, sheet_name="pilot_tests", index=False)
+    return {"questions": len(survey), "choices": len(choices), "output": str(out), "documentation_sheets": 6}
 
 
 def validate_items(items):
