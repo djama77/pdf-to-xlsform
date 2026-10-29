@@ -103,3 +103,18 @@ Après la conversion, le programme contrôle automatiquement la structure du cla
 - présence du titre et de l'identifiant du formulaire.
 
 Cette vérification structurelle ne remplace pas une validation complète par pyxform/KoboToolbox ni la relecture humaine. La logique de saut, les contraintes et la fidélité au document source doivent être vérifiées avant une collecte réelle.
+
+
+## Référentiel INSTAD XLSForm SUPERSKILL V3 — nomenclature et traçabilité
+
+Le générateur applique une proposition de nomenclature fondée sur les principes INSTAD : noms courts, descriptifs, uniques, stables, traçables et en `lower_snake_case`, sans accents ni espaces, avec un objectif de 32 caractères maximum pour les variables. Les noms réservés/problématiques sont évités autant que possible. Les noms générés restent des **propositions à valider**, jamais une validation métier automatique.
+
+- Le libellé original est conservé dans `survey.label` et dans le dictionnaire.
+- Les noms proposés sont normalisés sans accents et désambiguïsés avec un suffixe, dans la limite de longueur.
+- Le classeur inclut `variable_dictionary`, `source_traceability`, `decisions`, `logic_register`, `qa_report` et `pilot_tests` en plus des feuilles XLSForm principales.
+- Les ambiguïtés, modalités non détectées, logique métier, page/section source et compatibilité plateforme doivent être vérifiées. Le moteur ne prétend pas reconstruire les sauts, contraintes ou calculs absents du texte extrait.
+- Une variable validée ne doit pas être renommée après déploiement sans décision documentée et gestion de version.
+
+Les statuts utilisés sont `PASS`, `À VALIDER`, `BLOQUÉ` et `NON TESTÉ`. Une sortie XLSX n'est pas une déclaration de préparation PROD : validation métier, validation XLSForm et tests pilote restent obligatoires.
+
+Voir aussi [docs/INSTAD_NAMING_STANDARD.md](docs/INSTAD_NAMING_STANDARD.md).
