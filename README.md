@@ -55,9 +55,25 @@ result = to_xlsform(
 print(result)
 ```
 
+### Utilisation en ligne de commande
+
+Après installation du package :
+
+```powershell
+pdf-to-xlsform questionnaire.pdf --output questionnaire.xlsx --title "Enquête terrain" --form-id enquete_terrain
+```
+
+Ou sans installer la commande :
+
+```powershell
+python -m pdf_to_kobocollect questionnaire.docx -o questionnaire.xlsx
+```
+
 Les formats pris en charge sont PDF, DOCX et TXT. Le moteur travaille localement et n'envoie pas les documents à une API.
 
 ## Tests
+
+Une intégration continue GitHub Actions exécute les tests sous Python 3.10, 3.11 et 3.12 à chaque push et pull request.
 
 ```bash
 pytest -q
