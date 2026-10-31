@@ -281,6 +281,7 @@ def validate_xlsform(path: Path):
         errors.append("La feuille 'survey' ne contient aucune question.")
 
     valid_identifier = re.compile(r"^[a-z][a-z0-9_]*$")
+    valid_choice_code = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
     reserved_names = RESERVED_NAMES | {"instanceid", "username", "email", "phonenumber"}
     seen_survey_names = {}
     for excel_row, raw_name in enumerate(survey["name"], start=2):
@@ -340,9 +341,9 @@ def validate_xlsform(path: Path):
                 errors.append(
                     f"Nom de liste invalide dans choices à la ligne {actual_row} : '{list_name}'."
                 )
-            if not valid_identifier.fullmatch(choice_name):
+            if not valid_choice_code.fullmatch(choice_name):
                 errors.append(
-                    f"Nom de modalité invalide dans choices à la ligne {actual_row} : '{choice_name}'."
+                    f"Code de modalité invalide dans choices à la ligne {actual_row} : '{choice_name}'."
                 )
 
     used_lists = set()
