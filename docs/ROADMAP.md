@@ -11,8 +11,8 @@
 - [ ] Ajouter des exemples de questionnaires anonymisés et des tests de référence.
 - [ ] Améliorer la détection des questions numérotées sans confondre les modalités.
 - [ ] Ajouter une sortie de rapport de conversion lisible par un non-développeur.
-- [ ] Contrôler les noms, types, références de listes et doublons XLSForm.
-- [ ] Ajouter des tests sur les accents, tableaux DOCX et documents multipages.
+- [x] Contrôler les noms, types, références de listes et doublons XLSForm.
+- [x] Ajouter des tests ciblés sur les noms, doublons et erreurs structurelles XLSForm.\n- [ ] Ajouter des jeux de référence anonymisés, des tests de fidélité et des cas DOCX/PDF multipages.
 
 ## Phase 3 — fonctionnalités avancées
 - [ ] OCR local optionnel pour PDF numérisés.
