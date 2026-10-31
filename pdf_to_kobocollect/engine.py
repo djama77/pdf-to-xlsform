@@ -227,27 +227,42 @@ def validate_items(items):
 
 
 def validate_xlsform(path: Path):
-    """Check XLSForm workbook structure and choice-list references without uploading data."""
+    """Validate workbook structure and common XLSForm naming/list-reference rules.
+
+    This is a local structural check only; it does not replace pyxform or a
+    platform-side validation/import test.
+    """
     errors = []
     warnings = []
     path = Path(path)
-    try:
-        workbook = pd.ExcelFile(path)
-    except (OSError, ValueError, ImportError) as exc:
-        return {"valid": False, "errors": [f"Impossible d'ouvrir le fichier XLSX : {exc}"], "warnings": []}
 
-    required_sheets = {"survey", "choices", "settings"}
-    missing_sheets = sorted(required_sheets - set(workbook.sheet_names))
-    if missing_sheets:
+    if path.suffix.lower() != ".xlsx":
         return {
             "valid": False,
-            "errors": [f"Feuilles obligatoires manquantes : {', '.join(missing_sheets)}."],
+            "errors": ["Le fichier doit être un classeur .xlsx."],
             "warnings": [],
         }
 
-    survey = pd.read_excel(workbook, sheet_name="survey").fillna("")
-    choices = pd.read_excel(workbook, sheet_name="choices").fillna("")
-    settings = pd.read_excel(workbook, sheet_name="settings").fillna("")
+    try:
+        workbook = pd.ExcelFile(path, engine="openpyxl")
+        required_sheets = {"survey", "choices", "settings"}
+        missing_sheets = sorted(required_sheets - set(workbook.sheet_names))
+        if missing_sheets:
+            return {
+                "valid": False,
+                "errors": [f"Feuilles obligatoires manquantes : {', '.join(missing_sheets)}."],
+                "warnings": [],
+            }
+
+        survey = pd.read_excel(workbook, sheet_name="survey", dtype=str).fillna("")
+        choices = pd.read_excel(workbook, sheet_name="choices", dtype=str).fillna("")
+        settings = pd.read_excel(workbook, sheet_name="settings", dtype=str).fillna("")
+    except (OSError, ValueError, ImportError, KeyError) as exc:
+        return {
+            "valid": False,
+            "errors": [f"Impossible de lire le classeur XLSX : {exc}"],
+            "warnings": [],
+        }
 
     required_columns = {
         "survey": {"type", "name", "label"},
@@ -259,56 +274,115 @@ def validate_xlsform(path: Path):
         missing = sorted(required - set(frames[sheet].columns))
         if missing:
             errors.append(f"Colonnes manquantes dans '{sheet}' : {', '.join(missing)}.")
-
     if errors:
         return {"valid": False, "errors": errors, "warnings": warnings}
 
     if survey.empty:
         errors.append("La feuille 'survey' ne contient aucune question.")
-    for column in ("name", "label", "type"):
-        blank_rows = [str(idx + 2) for idx, value in enumerate(survey[column]) if not str(value).strip()]
-        if blank_rows:
-            errors.append(f"Valeur vide dans survey.{column}, ligne(s) Excel : {', '.join(blank_rows)}.")
 
-    names = survey["name"].astype(str).str.strip()
-    duplicate_names = sorted(names[names.duplicated(keep=False)].unique().tolist())
-    if duplicate_names:
-        errors.append("Noms de variables survey dupliqués : " + ", ".join(duplicate_names) + ".")
-
-    for column in ("list_name", "name", "label"):
-        blank_rows = [str(idx + 2) for idx, value in enumerate(choices[column]) if not str(value).strip()]
-        if blank_rows:
-            errors.append(f"Valeur vide dans choices.{column}, ligne(s) Excel : {', '.join(blank_rows)}.")
-
-    if not choices.empty:
-        pair_frame = choices.assign(
-            _list=choices["list_name"].astype(str).str.strip(),
-            _name=choices["name"].astype(str).str.strip(),
-        )
-        duplicate_pairs = pair_frame.duplicated(subset=["_list", "_name"], keep=False)
-        if duplicate_pairs.any():
-            pairs = sorted({
-                f"{row['_list']}/{row['_name']}"
-                for _, row in pair_frame.loc[duplicate_pairs].iterrows()
-            })
-            errors.append("Combinaisons list_name/name dupliquées dans choices : " + ", ".join(pairs) + ".")
-
-    declared_lists = set(choices["list_name"].astype(str).str.strip()) - {""}
-    for excel_row, value in enumerate(survey["type"], start=2):
-        match = re.match(r"^select_(?:one|multiple)\s+(\S+)", str(value).strip())
-        if match and match.group(1) not in declared_lists:
+    valid_identifier = re.compile(r"^[a-z][a-z0-9_]*$")
+    reserved_names = RESERVED_NAMES | {"instanceid", "username", "email", "phonenumber"}
+    seen_survey_names = {}
+    for excel_row, raw_name in enumerate(survey["name"], start=2):
+        name = str(raw_name).strip()
+        if not name:
+            errors.append(f"survey.name est vide à la ligne Excel {excel_row}.")
+            continue
+        folded = name.casefold()
+        if folded in seen_survey_names:
             errors.append(
-                f"survey.type ligne {excel_row} référence la liste absente '{match.group(1)}'."
+                f"Nom de variable survey dupliqué (insensible à la casse) : "
+                f"'{name}' aux lignes {seen_survey_names[folded]} et {excel_row}."
             )
+        else:
+            seen_survey_names[folded] = excel_row
+        if not valid_identifier.fullmatch(name):
+            errors.append(
+                f"Nom survey invalide à la ligne {excel_row} : '{name}'. "
+                "Utilisez lower_snake_case ASCII, commençant par une lettre."
+            )
+        if len(name) > MAX_VARIABLE_LENGTH:
+            errors.append(
+                f"Nom survey trop long à la ligne {excel_row} : '{name}' "
+                f"({len(name)} caractères; maximum {MAX_VARIABLE_LENGTH})."
+            )
+        if folded in reserved_names:
+            errors.append(f"Nom survey réservé à la ligne {excel_row} : '{name}'.")
+
+    for column in ("label", "type"):
+        for excel_row, value in enumerate(survey[column], start=2):
+            if not str(value).strip():
+                errors.append(f"Valeur vide dans survey.{column}, ligne Excel {excel_row}.")
+
+    declared_lists = set()
+    choice_pairs = set()
+    if not choices.empty:
+        for excel_row, row in choices.iterrows():
+            list_name = str(row["list_name"]).strip()
+            choice_name = str(row["name"]).strip()
+            label = str(row["label"]).strip()
+            actual_row = excel_row + 2
+            if not list_name or not choice_name or not label:
+                errors.append(
+                    f"Valeur vide dans choices (ligne Excel {actual_row}); "
+                    "list_name, name et label sont obligatoires."
+                )
+                continue
+            declared_lists.add(list_name)
+            pair = (list_name.casefold(), choice_name.casefold())
+            if pair in choice_pairs:
+                errors.append(
+                    f"Modalité dupliquée dans choices à la ligne Excel {actual_row} : "
+                    f"'{list_name}/{choice_name}'."
+                )
+            choice_pairs.add(pair)
+            if not valid_identifier.fullmatch(list_name):
+                errors.append(
+                    f"Nom de liste invalide dans choices à la ligne {actual_row} : '{list_name}'."
+                )
+            if not valid_identifier.fullmatch(choice_name):
+                errors.append(
+                    f"Nom de modalité invalide dans choices à la ligne {actual_row} : '{choice_name}'."
+                )
+
+    used_lists = set()
+    for excel_row, raw_type in enumerate(survey["type"], start=2):
+        qtype = str(raw_type).strip()
+        match = re.fullmatch(r"select_(one|multiple)\s+([A-Za-z][A-Za-z0-9_]*)", qtype)
+        if qtype.startswith("select_") and not match:
+            errors.append(
+                f"Type de sélection mal formé dans survey.type ligne {excel_row} : '{qtype}'."
+            )
+        elif match:
+            list_name = match.group(2)
+            used_lists.add(list_name)
+            if list_name not in declared_lists:
+                errors.append(
+                    f"survey.type ligne {excel_row} référence la liste absente '{list_name}'."
+                )
+
+    unused_lists = sorted(declared_lists - used_lists)
+    if unused_lists:
+        warnings.append(
+            "Listes de choix déclarées mais non utilisées : " + ", ".join(unused_lists) + "."
+        )
 
     if settings.empty:
         errors.append("La feuille 'settings' ne contient aucune ligne de configuration.")
     else:
+        first = settings.iloc[0]
         for column in ("form_title", "form_id"):
-            if not str(settings.iloc[0][column]).strip():
+            if not str(first[column]).strip():
                 errors.append(f"settings.{column} est vide.")
-
-    if any(str(value).strip().lower() == "nan" for value in survey["label"]):
-        warnings.append("Un libellé peut contenir la valeur littérale 'nan' ; vérifiez le document source.")
+        form_id = str(first["form_id"]).strip()
+        if form_id and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", form_id):
+            errors.append(
+                f"settings.form_id invalide : '{form_id}'. "
+                "Il doit commencer par une lettre et contenir uniquement lettres, chiffres, '_' ou '-'."
+            )
+        if len(settings) > 1:
+            warnings.append(
+                "Plusieurs lignes détectées dans settings; seule la première est contrôlée."
+            )
 
     return {"valid": not errors, "errors": errors, "warnings": warnings}
