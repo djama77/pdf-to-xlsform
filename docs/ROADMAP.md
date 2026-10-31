@@ -11,7 +11,7 @@
 - [ ] Ajouter des exemples de questionnaires anonymisés et des tests de référence.
 - [ ] Améliorer la détection des questions numérotées sans confondre les modalités.
 - [ ] Ajouter une sortie de rapport de conversion lisible par un non-développeur.
-- [ ] Contrôler les noms, types, références de listes et doublons XLSForm.
+- [x] Contrôler les noms, types, références de listes et doublons XLSForm (contrôle structurel local ; pyxform reste à intégrer).
 - [ ] Ajouter des tests sur les accents, tableaux DOCX et documents multipages.
 
 ## Phase 3 — fonctionnalités avancées
