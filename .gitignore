@@ -9,3 +9,10 @@ build/
 .env
 *.xlsx
 *.pdf
+
+# Local survey material and generated deliverables
+input/
+outputs/
+data/
+*.docx
+*.csv
