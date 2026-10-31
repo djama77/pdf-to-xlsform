@@ -100,7 +100,7 @@ def test_extract_text_from_txt_and_docx(tmp_path: Path):
 
 
 def test_generated_xlsform_passes_structural_validation(tmp_path: Path):
-    items = parse_questionnaire("Q1. Quel est votre pays ?\\n1. Djibouti\\n2. France")
+    items = parse_questionnaire("Q1. Quel est votre pays ?\n1. Djibouti\n2. France")
     output = tmp_path / "valid.xlsx"
     to_xlsform(items, output)
     report = validate_xlsform(output)
@@ -140,3 +140,76 @@ def test_xlsform_includes_dictionary_traceability_and_qa_sheets(tmp_path: Path):
     dictionary = pd.read_excel(output, sheet_name="variable_dictionary")
     assert dictionary.loc[0, "variable_name"] == "etat_civil"
     assert dictionary.loc[0, "validation_status"] == "À VALIDER"
+
+
+def _write_xlsform(path, survey_rows, choice_rows, settings_rows=None):
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        pd.DataFrame(survey_rows).to_excel(writer, sheet_name="survey", index=False)
+        pd.DataFrame(choice_rows, columns=["list_name", "name", "label"]).to_excel(writer, sheet_name="choices", index=False)
+        pd.DataFrame(settings_rows or [{"form_title": "Test", "form_id": "test"}]).to_excel(
+            writer, sheet_name="settings", index=False
+        )
+
+
+def test_validator_rejects_case_insensitive_duplicate_variable_names(tmp_path: Path):
+    output = tmp_path / "duplicate_names.xlsx"
+    _write_xlsform(
+        output,
+        [
+            {"type": "text", "name": "district", "label": "District"},
+            {"type": "text", "name": "District", "label": "Autre district"},
+        ],
+        [],
+    )
+    report = validate_xlsform(output)
+    assert not report["valid"]
+    assert any("dupliqué sans distinction de casse" in error for error in report["errors"])
+
+
+def test_validator_rejects_invalid_or_overlong_variable_names(tmp_path: Path):
+    output = tmp_path / "bad_names.xlsx"
+    _write_xlsform(
+        output,
+        [{"type": "text", "name": "variable-trop-longue-qui-depasse-trente-deux", "label": "Question"}],
+        [],
+    )
+    report = validate_xlsform(output)
+    assert not report["valid"]
+    assert any("dépasse 32 caractères" in error for error in report["errors"])
+    assert any("caractères non conformes" in error for error in report["errors"])
+
+
+def test_validator_rejects_case_insensitive_duplicate_choices_within_list(tmp_path: Path):
+    output = tmp_path / "duplicate_choices.xlsx"
+    _write_xlsform(
+        output,
+        [{"type": "select_one yes_no", "name": "response", "label": "Réponse"}],
+        [
+            {"list_name": "yes_no", "name": "yes", "label": "Oui"},
+            {"list_name": "YES_NO", "name": "YES", "label": "OUI"},
+        ],
+    )
+    report = validate_xlsform(output)
+    assert not report["valid"]
+    assert any("Modalité dupliquée" in error for error in report["errors"])
+
+
+def test_validator_reports_malformed_select_type_and_unused_lists(tmp_path: Path):
+    output = tmp_path / "bad_select.xlsx"
+    _write_xlsform(
+        output,
+        [{"type": "select_one", "name": "response", "label": "Réponse"}],
+        [{"list_name": "unused", "name": "yes", "label": "Oui"}],
+    )
+    report = validate_xlsform(output)
+    assert not report["valid"]
+    assert any("mal formé" in error for error in report["errors"])
+    assert any("non utilisées" in warning for warning in report["warnings"])
+
+
+def test_validator_handles_non_xlsx_file_without_crashing(tmp_path: Path):
+    output = tmp_path / "not_a_workbook.xlsx"
+    output.write_text("not an xlsx file", encoding="utf-8")
+    report = validate_xlsform(output)
+    assert report["valid"] is False
+    assert report["errors"]
