@@ -211,3 +211,18 @@ def test_validator_rejects_non_xlsx_input(tmp_path):
     report = validate_xlsform(tmp_path / "questionnaire.csv")
     assert report["valid"] is False
     assert any(".xlsx" in error for error in report["errors"])
+
+
+def test_validator_accepts_numeric_choice_codes(tmp_path):
+    output = tmp_path / "numeric_choices.xlsx"
+    _write_minimal_xlsform(
+        output,
+        [{"type": "select_one statut", "name": "statut", "label": "Statut"}],
+        [
+            {"list_name": "statut", "name": "1", "label": "Oui"},
+            {"list_name": "statut", "name": "2", "label": "Non"},
+        ],
+    )
+    report = validate_xlsform(output)
+    assert report["valid"] is True
+    assert report["errors"] == []
